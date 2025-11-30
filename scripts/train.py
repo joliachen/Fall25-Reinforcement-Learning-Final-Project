@@ -35,6 +35,35 @@ logger = get_logger(__name__)
 
 
 def main(_):
+    """Main entry point for DDPO training.
+
+    This function orchestrates the full Diffusion-based Policy Optimization
+    training loop:
+
+    * Parses and augments the configuration (e.g., run name, resume path).
+    * Sets up Accelerate (mixed precision, gradient accumulation, logging).
+    * Loads and prepares the Stable Diffusion pipeline and DDIM scheduler.
+    * Optionally attaches LoRA attention processors and configures saving /
+      loading hooks for Accelerate.
+    * Builds the optimizer, prompt function, reward function, and statistic
+      tracker.
+    * Runs the outer training loop over epochs:
+        - Sampling phase: generates prompts, samples trajectories with
+          `pipeline_with_logprob`, and computes rewards asynchronously.
+        - Advantage computation: normalizes rewards globally or per-prompt.
+        - Training phase: runs PPO-style updates over unrolled diffusion
+          timesteps using `ddim_step_with_logprob` to compute log-prob ratios.
+
+    Logging (via WandB) includes rewards, statistics, and sample images.
+
+    Args:
+        _: Unused argument required by `absl.app.run`, which passes in the
+            argv list.
+
+    Returns:
+        None. The function runs until training is complete and may write
+        checkpoints and logs to disk.
+    """
     # basic Accelerate and logging setup
     config = FLAGS.config
 
@@ -152,7 +181,25 @@ def main(_):
         # this case, AttnProcsLayers) needs to also be used for the forward pass. AttnProcsLayers doesn't have a
         # `forward` method, so we wrap it to add one and capture the rest of the unet parameters using a closure.
         class _Wrapper(AttnProcsLayers):
+            """Wrapper around AttnProcsLayers that forwards to the UNet.
+
+            This class exists solely so that Accelerate can see a single module (`AttnProcsLayers`) that both:
+            * registers the LoRA parameters, and
+            * participates in the forward pass.
+
+            The forward just delegates to `pipeline.unet`, but the parameters
+            tracked by `AttnProcsLayers` are the ones updated during training.
+            """
             def forward(self, *args, **kwargs):
+                 """Forward pass that delegates to the underlying UNet.
+
+                Args:
+                    *args: Positional arguments to pass to `pipeline.unet`.
+                    **kwargs: Keyword arguments to pass to `pipeline.unet`.
+
+                Returns:
+                    The result of calling `pipeline.unet(*args, **kwargs)`.
+                """
                 return pipeline.unet(*args, **kwargs)
 
         unet = _Wrapper(pipeline.unet.attn_processors)
@@ -162,6 +209,33 @@ def main(_):
     # set up diffusers-friendly checkpoint saving with Accelerate
 
     def save_model_hook(models, weights, output_dir):
+        """Custom save hook for Accelerate model checkpoints.
+
+        This hook tells Accelerate how to save the UNet or its LoRA attention
+        processors in a Diffusers-compatible format.
+
+        Behavior:
+            * If `config.use_lora` is True and `models[0]` is an
+              `AttnProcsLayers` instance, the LoRA attention processors are
+              saved using `pipeline.unet.save_attn_procs(output_dir)`.
+            * If `config.use_lora` is False and `models[0]` is a
+              `UNet2DConditionModel`, the full UNet is saved under
+              `os.path.join(output_dir, "unet")`.
+            * Otherwise, a `ValueError` is raised.
+
+        After saving, the corresponding entry in `weights` is popped so that
+        Accelerate does not attempt to handle the model saving itself.
+
+        Args:
+            models: List of models passed by Accelerate. For this hook, exactly
+                one model is expected.
+            weights: List of state dicts corresponding to `models`. The last
+                element is removed after custom saving.
+            output_dir: Directory path where the checkpoint should be written.
+
+        Raises:
+            ValueError: If the model type is not recognized for saving.
+        """
         assert len(models) == 1
         if config.use_lora and isinstance(models[0], AttnProcsLayers):
             pipeline.unet.save_attn_procs(output_dir)
@@ -172,6 +246,35 @@ def main(_):
         weights.pop()  # ensures that accelerate doesn't try to handle saving of the model
 
     def load_model_hook(models, input_dir):
+        """Custom load hook for Accelerate model checkpoints.
+
+        This hook tells Accelerate how to restore the UNet or its LoRA
+        attention processors from a Diffusers-compatible checkpoint.
+
+        Behavior:
+            * If `config.use_lora` is True and `models[0]` is an
+              `AttnProcsLayers` instance:
+                - Load a temporary UNet from the pretrained model,
+                - Load LoRA attention processors from `input_dir` into it,
+                - Copy the resulting `AttnProcsLayers` state into `models[0]`.
+            * If `config.use_lora` is False and `models[0]` is a
+              `UNet2DConditionModel`:
+                - Load the UNet from `input_dir/unet`,
+                - Copy its config and weights into `models[0]`.
+            * Otherwise, a `ValueError` is raised.
+
+        After loading, the corresponding entry in `models` is popped so that
+        Accelerate does not attempt to handle the model loading itself.
+
+        Args:
+            models: List of models passed by Accelerate. For this hook, exactly
+                one model is expected.
+            input_dir: Directory path from which the checkpoint should be
+                loaded.
+
+        Raises:
+            ValueError: If the model type is not recognized for loading.
+        """
         assert len(models) == 1
         if config.use_lora and isinstance(models[0], AttnProcsLayers):
             # pipeline.unet.load_attn_procs(input_dir)

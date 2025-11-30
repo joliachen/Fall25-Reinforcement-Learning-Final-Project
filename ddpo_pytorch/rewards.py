@@ -5,6 +5,25 @@ import torch
 
 
 def jpeg_incompressibility():
+    """Create a reward function measuring JPEG file size (incompressibility).
+
+    The returned function converts images to JPEG at quality 95 and uses the
+    resulting file size (in kilobytes) as the reward. Larger files correspond
+    to less compressible images (more visual complexity / noise).
+
+    Returns:
+        Callable:
+            A function `_fn(images, prompts, metadata)` that returns
+            `(rewards, info)` where:
+
+            * `images`:
+                - `torch.Tensor` in `[0, 1]` of shape `(N, C, H, W)`, or
+                - NumPy array/array-like of shape `(N, H, W, C)` in `[0, 255]`.
+            * `prompts`: Unused, kept for API compatibility.
+            * `metadata`: Unused, kept for API compatibility.
+            * `rewards`: `np.ndarray` of shape `(N,)` with JPEG sizes in KB.
+            * `info`: Empty dict.
+    """
     def _fn(images, prompts, metadata):
         if isinstance(images, torch.Tensor):
             images = (images * 255).round().clamp(0, 255).to(torch.uint8).cpu().numpy()
@@ -20,6 +39,20 @@ def jpeg_incompressibility():
 
 
 def jpeg_compressibility():
+    """Create a reward function for JPEG compressibility (negative file size).
+
+    This is the negation of :func:`jpeg_incompressibility`. Smaller files
+    (more compressible images) correspond to larger rewards.
+
+    Returns:
+        Callable:
+            A function `_fn(images, prompts, metadata)` with the same inputs as
+            in :func:`jpeg_incompressibility`, returning:
+
+            * `rewards`: `np.ndarray` of shape `(N,)` with negative JPEG sizes
+              in KB (higher is better).
+            * `info`: Empty dict.
+    """
     jpeg_fn = jpeg_incompressibility()
 
     def _fn(images, prompts, metadata):
@@ -30,6 +63,22 @@ def jpeg_compressibility():
 
 
 def aesthetic_score():
+    """Create a reward function based on the aesthetic predictor.
+
+    Uses :class:`ddpo_pytorch.aesthetic_scorer.AestheticScorer` with a CLIP
+    backbone to produce scalar aesthetic scores for each image. Images are
+    converted to uint8 tensors and passed directly to the scorer.
+
+    Note:
+        This function moves the scorer to CUDA by default and assumes GPU availability.
+
+    Returns:
+        Callable:
+            A function `_fn(images, prompts, metadata)` that returns:
+                * `rewards`: `torch.FloatTensor` of shape `(N,)` with aesthetic
+                scores (higher is better).
+                * `info`: Empty dict.
+    """
     from ddpo_pytorch.aesthetic_scorer import AestheticScorer
 
     scorer = AestheticScorer(dtype=torch.float32).cuda()
@@ -47,9 +96,31 @@ def aesthetic_score():
 
 
 def llava_strict_satisfaction():
-    """Submits images to LLaVA and computes a reward by matching the responses to ground truth answers directly without
-    using BERTScore. Prompt metadata must have "questions" and "answers" keys. See
-    https://github.com/kvablack/LLaVA-server for server-side code.
+    """Reward from LLaVA QA accuracy with exact answer matching.
+
+    Submits images and associated QA metadata to a LLaVA server and computes a
+    per-image reward based on how many ground-truth answers are contained in
+    the model's responses (no BERTScore, strict string containment).
+
+    Metadata is expected to be an iterable of dicts with keys:
+        * `"questions"`: list of strings (questions to ask about the image).
+        * `"answers"`: list of strings (ground-truth answers in order).
+
+    The server API is implemented in https://github.com/kvablack/LLaVA-server.
+
+    Returns:
+        Callable:
+            A function `_fn(images, prompts, metadata)` that:
+
+            * Sends images and associated questions to the LLaVA server.
+            * Receives model responses per question.
+            * Computes a per-image reward as the mean over questions of
+              `1{answer is substring of response}`.
+
+            It returns `(rewards, info)` where:
+            * `rewards`: `np.ndarray` of shape `(N,)` with values in `[0, 1]`.
+            * `info`: A dict containing:
+                - `"answers"`: an array of model outputs for analysis.
     """
     import requests
     from requests.adapters import HTTPAdapter, Retry
@@ -116,8 +187,32 @@ def llava_strict_satisfaction():
 
 
 def llava_bertscore():
-    """Submits images to LLaVA and computes a reward by comparing the responses to the prompts using BERTScore. See
-    https://github.com/kvablack/LLaVA-server for server-side code.
+    """Reward from LLaVA responses compared to prompts using BERTScore recall.
+
+    Submits images and text prompts to a LLaVA server which:
+        1. Generates a short description for each image.
+        2. Compares the generated text to a templated answer based on the
+           original prompt using BERTScore.
+        3. Returns precision, recall, f1 and raw outputs.
+
+    This reward uses the BERTScore *recall* as the scalar reward.
+
+    The server API is implemented in https://github.com/kvablack/LLaVA-server.
+
+    Returns:
+        Callable:
+            A function `_fn(images, prompts, metadata)` that:
+
+            * Accepts `images` and `prompts` (metadata is ignored).
+            * Sends JPEG-compressed images and text pairs to the server.
+            * Returns `(rewards, info)` where:
+
+            * `rewards`: `np.ndarray` of shape `(N,)` containing BERTScore
+              recall values.
+            * `info`: A dict with:
+                - `"precision"`: array of precision scores.
+                - `"f1"`: array of F1 scores.
+                - `"outputs"`: array of generated text outputs.
     """
     import requests
     from requests.adapters import HTTPAdapter, Retry

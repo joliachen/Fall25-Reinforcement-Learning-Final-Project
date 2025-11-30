@@ -37,8 +37,17 @@ def pipeline_with_logprob(
     cross_attention_kwargs: Optional[Dict[str, Any]] = None,
     guidance_rescale: float = 0.0,
 ):
-    r"""
-    Function invoked when calling the pipeline for generation.
+    """
+    Run Stable Diffusion sampling with DDIM and track per-step log probabilities.
+
+    This function mirrors the original `StableDiffusionPipeline.__call__` while:
+    * Forcing the use of a DDIM scheduler (via the patched `ddim_step_with_logprob`).
+    * Returning all intermediate latent states over the denoising trajectory.
+    * Returning the log-probability of each DDIM transition, as computed by
+      `ddim_step_with_logprob`.
+
+    It is primarily intended for use in DDPO, where access to both intermediate
+    latents and the transition log-probs is needed.
 
     Args:
         prompt (`str` or `List[str]`, *optional*):
@@ -102,14 +111,31 @@ def pipeline_with_logprob(
             [Common Diffusion Noise Schedules and Sample Steps are Flawed](https://arxiv.org/pdf/2305.08891.pdf).
             Guidance rescale factor should fix overexposure when using zero terminal SNR.
 
-    Examples:
-
     Returns:
-        [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
-        [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] if `return_dict` is True, otherwise a `tuple.
-        When returning a tuple, the first element is a list with the generated images, and the second element is a
-        list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
-        (nsfw) content, according to the `safety_checker`.
+        Tuple:
+            A 4-tuple containing:
+            * `image`:
+                - If `output_type != "latent"`: the decoded images in the format
+                  specified by `output_type` (e.g., list of PIL images or numpy
+                  arrays).
+                - If `output_type == "latent"`: the final latent tensor
+                  `x_0` (after all denoising steps).
+            * `has_nsfw_concept`:
+                A list of booleans indicating whether the corresponding image is
+                likely to represent "not-safe-for-work" (NSFW) content, or
+                `None` if no safety checker is used.
+            * `all_latents` (`List[torch.FloatTensor]`):
+                List of latent tensors at each step of the denoising process,
+                including the initial latents. Length is
+                `num_inference_steps + 1`, and each element has the same shape
+                as the working `latents` tensor.
+            * `all_log_probs` (`List[torch.FloatTensor]`):
+                List of log probability tensors, one per denoising step. Each
+                tensor has shape `(batch_size * num_images_per_prompt,)` and
+                contains the log-probability of the transition from `x_t` to
+                `x_{t-1}` under the DDIM Gaussian parameterized by the UNet
+                outputs.
+
     """
     # 0. Default height and width to unet
     height = height or self.unet.config.sample_size * self.vae_scale_factor

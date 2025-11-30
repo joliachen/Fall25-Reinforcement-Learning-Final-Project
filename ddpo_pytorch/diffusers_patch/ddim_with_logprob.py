@@ -15,11 +15,46 @@ from diffusers.schedulers.scheduling_ddim import DDIMSchedulerOutput, DDIMSchedu
 
 
 def _left_broadcast(t, shape):
+    """Left-broadcast a tensor to a target shape.
+
+    This helper reshapes `t` by appending singleton dimensions on the right and
+    then uses `.broadcast_to` to match the given `shape`. This is useful for
+    broadcasting per-timestep scalars (e.g., alphas) to match a full sample
+    tensor shape.
+
+    Args:
+        t: Input tensor to broadcast. Typically 1D or scalar-like in this code.
+        shape: Target shape to broadcast to (usually `sample.shape`).
+
+    Returns:
+        A view of `t` broadcast to `shape`.
+
+    Raises:
+        AssertionError: If `t.ndim > len(shape)`.
+    """
     assert t.ndim <= len(shape)
     return t.reshape(t.shape + (1,) * (len(shape) - t.ndim)).broadcast_to(shape)
 
 
 def _get_variance(self, timestep, prev_timestep):
+    """Compute DDIM variance between two timesteps.
+
+    This follows the DDIM variance formula used for sampling, based on the
+    cumulative product of alphas at the current and previous timesteps.
+
+    Args:
+        self: A `DDIMScheduler` instance providing `alphas_cumprod` and
+            `final_alpha_cumprod`.
+        timestep: Current timestep(s). Can be a scalar or a 1D tensor of
+            timesteps (typically on CPU or GPU).
+        prev_timestep: Previous timestep(s), aligned with `timestep`. Negative
+            values are mapped to `final_alpha_cumprod`.
+
+    Returns:
+        A tensor of variances for each (prev_timestep, timestep) pair. The
+        shape matches that of the gathered alpha products (usually 1D and later
+        broadcast to the sample shape).
+    """
     alpha_prod_t = torch.gather(self.alphas_cumprod, 0, timestep.cpu()).to(
         timestep.device
     )
@@ -46,31 +81,55 @@ def ddim_step_with_logprob(
     generator=None,
     prev_sample: Optional[torch.FloatTensor] = None,
 ) -> Union[DDIMSchedulerOutput, Tuple]:
-    """
-    Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
-    process from the learned model outputs (most often the predicted noise).
+    """Perform a DDIM sampling step and compute log-probability of the sample.
+
+    This function is a patched version of the original DDIM scheduler step:
+    in addition to computing the next sample (`prev_sample`), it also computes
+    the log probability of that `prev_sample` under the Gaussian transition
+    parameterized by the UNet prediction at the current timestep.
+
+    The function supports:
+    * Batched timesteps (`timestep` as a tensor).
+    * Passing in an explicit `prev_sample` instead of sampling noise, in which
+      case only the log-probability of that sample is computed.
+    * The usual `prediction_type` modes used by `diffusers`
+      (`"epsilon"`, `"sample"`, `"v_prediction"`).
 
     Args:
-        model_output (`torch.FloatTensor`): direct output from learned diffusion model.
-        timestep (`int`): current discrete timestep in the diffusion chain.
-        sample (`torch.FloatTensor`):
-            current instance of sample being created by diffusion process.
-        eta (`float`): weight of noise for added noise in diffusion step.
-        use_clipped_model_output (`bool`): if `True`, compute "corrected" `model_output` from the clipped
-            predicted original sample. Necessary because predicted original sample is clipped to [-1, 1] when
-            `self.config.clip_sample` is `True`. If no clipping has happened, "corrected" `model_output` would
-            coincide with the one provided as input and `use_clipped_model_output` will have not effect.
-        generator: random number generator.
-        variance_noise (`torch.FloatTensor`): instead of generating noise for the variance using `generator`, we
-            can directly provide the noise for the variance itself. This is useful for methods such as
-            CycleDiffusion. (https://arxiv.org/abs/2210.05559)
-        return_dict (`bool`): option for returning tuple rather than DDIMSchedulerOutput class
+        self: A `DDIMScheduler` instance. Must have `num_inference_steps` set via
+            `set_timesteps` before calling this function.
+        model_output: Direct output from the diffusion model at the current
+            timestep. Shape typically matches `sample`.
+        timestep: Current discrete timestep(s) in the diffusion chain. Can be a
+            scalar integer or a 1D tensor of timesteps; the implementation
+            handles batched timesteps.
+        sample: Current noisy sample `x_t` at the given `timestep`.
+        eta: Weight of the stochasticity in the DDIM step. `eta = 0` yields a
+            deterministic DDIM update; `eta > 0` adds noise (stochastic DDIM).
+        use_clipped_model_output: If `True`, recompute `pred_epsilon` from the
+            (possibly clipped) predicted original sample `x_0`. This mirrors the
+            behavior in Glide and the original `diffusers` DDIM scheduler.
+        generator: Optional PyTorch random number generator used to sample the
+            noise term if `prev_sample` is not provided.
+        prev_sample: Optional pre-computed previous sample `x_{t-1}`. If
+            provided, no new noise is sampled; instead, this tensor is used to
+            compute the log-probability under the Gaussian with mean
+            `prev_sample_mean` and standard deviation `std_dev_t`.
 
     Returns:
-        [`~schedulers.scheduling_utils.DDIMSchedulerOutput`] or `tuple`:
-        [`~schedulers.scheduling_utils.DDIMSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`. When
-        returning a tuple, the first element is the sample tensor.
+        Tuple[torch.FloatTensor, torch.FloatTensor]:
+            * `prev_sample`: The predicted (or provided) sample at the previous
+              timestep `x_{t-1}`, cast to the same dtype as `sample`.
+            * `log_prob`: The log probability of `prev_sample` under the
+              Gaussian transition from `x_t` to `x_{t-1}`, averaged over all
+              non-batch dimensions. Shape is `(batch_size,)`.
 
+    Raises:
+        ValueError: If `self.num_inference_steps` has not been set via
+            `set_timesteps`, or if both `generator` and `prev_sample` are
+            provided at the same time.
+        ValueError: If `self.config.prediction_type` is not one of
+            `"epsilon"`, `"sample"`, or `"v_prediction"`.
     """
     assert isinstance(self, DDIMScheduler)
     if self.num_inference_steps is None:
