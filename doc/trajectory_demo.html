@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>DDPO Compressibility Trajectory</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      max-width: 800px;
+      margin: 2rem auto;
+    }
+    #image-container {
+      text-align: center;
+      margin-top: 1rem;
+    }
+    #image-container img {
+      max-width: 512px;
+      width: 100%;
+      height: auto;
+      border: 1px solid #ccc;
+    }
+    #info {
+      margin-top: 0.5rem;
+      text-align: center;
+    }
+    input[type="range"] {
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+  <h1>DDPO Compressibility Trajectory</h1>
+  <p>
+    Use the slider to move along the denoising trajectory. For each step we show
+    the sampled image and its JPEG compressibility score (higher is better,
+    since the reward is negative JPEG file size).
+  </p>
+
+  <label for="stepSlider">
+    Step:
+    <span id="stepValue">0</span>
+  </label>
+  <input type="range" id="stepSlider" min="0" max="50" value="0" />
+
+  <div id="image-container">
+    <img id="trajectoryImage" src="../trajectory_demo/step_000.png" alt="Trajectory step" />
+  </div>
+
+  <div id="info">
+    <p>Score: <span id="scoreValue"></span></p>
+  </div>
+
+  <script>
+    const scores = [
+      -232.503, -230.465, -229.248, -227.719, -228.653, -228.041, -223.002, -220.632, -219.347, -215.128, -211.387, -211.101, -210.779, -212.354, -210.482, -206.875, -203.574, -201.004, -197.826, -197.458, -194.526, -186.819, -179.373, -168.704, -158.288, -145.847, -133.131, -120.059, -104.762, -92.766, -83.319, -71.109, -61.451, -49.264, -40.086, -32.52, -25.049, -19.164, -13.467, -9.844, -7.015, -5.882, -5.375, -5.239, -5.104, -5.077, -5.061, -5.08, -5.043, -5.061, -5.067
+    ];
+
+    const slider = document.getElementById("stepSlider");
+    const img = document.getElementById("trajectoryImage");
+    const stepValue = document.getElementById("stepValue");
+    const scoreValue = document.getElementById("scoreValue");
+
+    // Set slider max to T (scores.length - 1)
+    slider.max = scores.length - 1;
+
+    function update() {
+      const s = Number(slider.value);
+      stepValue.textContent = s;
+      const score = scores[s];
+      scoreValue.textContent = score.toFixed(2);
+
+      const stepStr = String(s).padStart(3, "0");
+      img.src = "../trajectory_demo/step_" + stepStr + ".png";
+    }
+
+    slider.addEventListener("input", update);
+    window.addEventListener("load", update);
+  </script>
+</body>
+</html>
