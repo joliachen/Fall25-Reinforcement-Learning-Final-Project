@@ -5,76 +5,150 @@
   <title>DDPO Compressibility Trajectory</title>
   <style>
     body {
-      font-family: sans-serif;
-      max-width: 800px;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+        sans-serif;
+      max-width: 900px;
       margin: 2rem auto;
-    }
-    #image-container {
       text-align: center;
-      margin-top: 1rem;
     }
-    #image-container img {
-      max-width: 512px;
+    h1 {
+      font-size: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    #image-row {
+      display: flex;
+      justify-content: center;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+    }
+    .image-card {
+      max-width: 384px;
+    }
+    .image-card h2 {
+      font-size: 1rem;
+      margin-bottom: 0.25rem;
+    }
+    .image-card img {
+      max-width: 384px;
       width: 100%;
       height: auto;
-      border: 1px solid #ccc;
+      border: 1px solid #ddd;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
     }
-    #info {
-      margin-top: 0.5rem;
-      text-align: center;
+    .info {
+      margin-top: 0.4rem;
+      font-size: 0.9rem;
+      color: #444;
     }
-    input[type="range"] {
-      width: 100%;
+    #slider-row {
+      margin: 1rem auto 0;
+      max-width: 384px;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.9rem;
+    }
+    #slider-row span {
+      white-space: nowrap;
+    }
+    #stepSlider {
+      flex: 1;
+    }
+    #stepNumber {
+      width: 64px;
     }
   </style>
 </head>
 <body>
-  <h1>DDPO Compressibility Trajectory</h1>
-  <p>
-    Use the slider to move along the denoising trajectory. For each step we show
-    the sampled image and its JPEG compressibility score (higher is better,
-    since the reward is negative JPEG file size).
-  </p>
+  <h1>images</h1>
 
-  <label for="stepSlider">
-    Step:
-    <span id="stepValue">0</span>
-  </label>
-  <input type="range" id="stepSlider" min="0" max="50" value="0" />
+  <div id="image-row">
+    <div class="image-card">
+      <h2>Stable Diffusion</h2>
+      <img
+        id="sdImage"
+        src="../trajectory_sd/step_000.png"
+        alt="SD trajectory step"
+      />
+      <div class="info">
+        <span id="sdInfo">Step 0 — Score …</span>
+      </div>
+    </div>
 
-  <div id="image-container">
-    <img id="trajectoryImage" src="../trajectory_demo/step_000.png" alt="Trajectory step" />
+    <div class="image-card">
+      <h2>DDPO</h2>
+      <img
+        id="ddpoImage"
+        src="../trajectory_ddpo/step_000.png"
+        alt="DDPO trajectory step"
+      />
+      <div class="info">
+        <span id="ddpoInfo">Step 0 — Score …</span>
+      </div>
+    </div>
   </div>
 
-  <div id="info">
-    <p>Score: <span id="scoreValue"></span></p>
+  <div id="slider-row">
+    <span>Step</span>
+    <input type="range" id="stepSlider" min="0" max="50" value="0" />
+    <input type="number" id="stepNumber" min="0" max="50" value="0" />
   </div>
 
   <script>
-    const scores = [
-      -232.503, -230.465, -229.248, -227.719, -228.653, -228.041, -223.002, -220.632, -219.347, -215.128, -211.387, -211.101, -210.779, -212.354, -210.482, -206.875, -203.574, -201.004, -197.826, -197.458, -194.526, -186.819, -179.373, -168.704, -158.288, -145.847, -133.131, -120.059, -104.762, -92.766, -83.319, -71.109, -61.451, -49.264, -40.086, -32.52, -25.049, -19.164, -13.467, -9.844, -7.015, -5.882, -5.375, -5.239, -5.104, -5.077, -5.061, -5.08, -5.043, -5.061, -5.067
+    const sdScores = [
+      -232.786, -233.221, -232.285, -231.828, -232.059, -231.882, -233.878, -233.792, -236.26, -234.848, -236.262, -235.815, -233.405, -232.052, -232.064, -230.476, -228.553, -225.372, -223.301, -223.085, -220.833, -217.448, -215.226, -210.753, -209.441, -204.467, -204.307, -202.296, -196.657, -192.842, -187.468, -182.996, -178.545, -172.802, -166.766, -161.688, -155.573, -148.075, -140.966, -134.559, -128.321, -120.655, -111.958, -102.837, -92.47, -79.549, -68.529, -58.562, -48.288, -39.102, -38.822
+    ];
+
+    const ddpoScores = [
+      -230.99, -231.122, -230.593, -226.397, -223.578, -218.42, -215.582, -207.236, -202.597, -196.979, -194.727, -186.664, -183.291, -178.289, -170.544, -165.401, -156.979, -152.397, -142.629, -138.551, -134.805, -128.568, -123.117, -117.888, -111.354, -103.226, -95.839, -88.927, -82.321, -75.064, -70.05, -63.27, -57.696, -52.161, -47.143, -42.127, -37.876, -33.434, -29.54, -25.57, -22.529, -19.936, -17.465, -15.294, -13.912, -12.897, -11.589, -10.34, -9.988, -9.623, -9.461
     ];
 
     const slider = document.getElementById("stepSlider");
-    const img = document.getElementById("trajectoryImage");
-    const stepValue = document.getElementById("stepValue");
-    const scoreValue = document.getElementById("scoreValue");
+    const numberInput = document.getElementById("stepNumber");
+    const sdImg = document.getElementById("sdImage");
+    const ddpoImg = document.getElementById("ddpoImage");
+    const sdInfo = document.getElementById("sdInfo");
+    const ddpoInfo = document.getElementById("ddpoInfo");
 
-    // Set slider max to T (scores.length - 1)
-    slider.max = scores.length - 1;
-
-    function update() {
-      const s = Number(slider.value);
-      stepValue.textContent = s;
-      const score = scores[s];
-      scoreValue.textContent = score.toFixed(2);
-
-      const stepStr = String(s).padStart(3, "0");
-      img.src = "../trajectory_demo/step_" + stepStr + ".png";
+    // Use the shortest trajectory length to be safe
+    const maxLen = Math.min(sdScores.length || Infinity, ddpoScores.length);
+    if (maxLen > 0 && maxLen !== Infinity) {
+      const maxStep = maxLen - 1;
+      slider.max = maxStep;
+      numberInput.max = maxStep;
     }
 
-    slider.addEventListener("input", update);
-    window.addEventListener("load", update);
+    function fmtScore(v) {
+      return typeof v === "number" && !Number.isNaN(v) ? v.toFixed(2) : "…";
+    }
+
+    function update(step) {
+      const s = Number(step);
+      slider.value = s;
+      numberInput.value = s;
+
+      const stepStr = String(s).padStart(3, "0");
+
+      // Update image paths (edit paths here if your folders differ)
+      sdImg.src = "../trajectory_sd/step_" + stepStr + ".png";
+      ddpoImg.src = "../trajectory_ddpo/step_" + stepStr + ".png";
+
+      // Update score labels
+      const sdScore = sdScores[s];
+      const ddpoScore = ddpoScores[s];
+      sdInfo.textContent = `Step ${s}   Score ${fmtScore(sdScore)}`;
+      ddpoInfo.textContent = `Step ${s}   Score ${fmtScore(ddpoScore)}`;
+    }
+
+    slider.addEventListener("input", () => update(slider.value));
+    numberInput.addEventListener("input", () => {
+      let val = Number(numberInput.value);
+      if (Number.isNaN(val)) val = 0;
+      val = Math.max(0, Math.min(val, slider.max));
+      update(val);
+    });
+
+    window.addEventListener("load", () => update(0));
   </script>
 </body>
 </html>
