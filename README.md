@@ -60,13 +60,13 @@ doc/trajectory_demo.html
 Instructions:
 ```bash
     # Stable Diffusion trajectory 
-    python visualize/visualize_traj.py --checkpoint None
+    python visualize_inference/visualize_traj.py --checkpoint None
 
     # DDPO trajectory
-    python visualize/visualize_traj.py --checkpoint logs/<run>/checkpoints/checkpoint_XX
+    python visualize_inference/visualize_traj.py --checkpoint logs/<run>/checkpoints/checkpoint_XX
 
     # Then load the scores accordingly from trajectory_sd and trajectory_ddpo 
-    python visualize_training/load_scores.py
+    python visualize_inference/load_scores.py
 
     # and paste the score list into doc/trajectory_demo.html
 

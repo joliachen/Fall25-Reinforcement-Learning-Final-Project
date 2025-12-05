@@ -7,10 +7,10 @@ images + scores for visualization.
 Usage:
 
     # Stable Diffusion (no DDPO weights)
-    python visualize/visualize_traj.py --checkpoint None
+    python visualize_inference/visualize_traj.py --checkpoint None
 
     # DDPO trajectory (with a given checkpoint)
-    python visualize/visualize_traj.py \
+    python visualize_inference/visualize_traj.py \
         --checkpoint logs/<run>/checkpoints/checkpoint_XX
 
 Outputs (depending on checkpoint):
