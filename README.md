@@ -26,7 +26,7 @@ accelerate launch scripts/train.py --config config/dgx.py:compressibility
 ```
 
 ## Reward Curve
-Reward / compression score across timesteps. The DDPO working configuration (Set~A) steadily improves over baseline SD, while Set~B shows unstable or slower progress. Shaded regions indicate one standard deviation across five seeds.
+Reward / compression score across timesteps. The DDPO working configuration (Set A) steadily improves over baseline SD, while Set B shows unstable or slower progress. Shaded regions indicate one standard deviation across five seeds.
 
 <img src="doc/reward_curve_comparison.png" width="100%">
 
@@ -43,11 +43,11 @@ Reward / compression score across timesteps. The DDPO working configuration (Set
 
 
 ## Learned Trajectories
-Training progression for DDPO (Set~A, working).
+Training progression for DDPO (Set A, working).
 
 <img src="doc/training_strip_A.png" width="100%">
 
-Training progression for DDPO (Set~B, non-working).
+Training progression for DDPO (Set B, non-working).
 
 <img src="doc/training_strip_B.png" width="100%">
 
@@ -61,7 +61,7 @@ Training progression for DDPO (Set~B, non-working).
 </details>
 
 ## Baseline Comparison
-Row 1: SD baseline. Row 2: SD+DDPO (Set~A, working). Row 3: SD+DDPO (Set~B, non-working). DDPO with Set~A produces smooth transitions and coherent latents, while Set~B exhibits artifacts and inconsistent denoising.
+Row 1: SD baseline. Row 2: SD+DDPO (Set A, working). Row 3: SD+DDPO (Set B, non-working). DDPO with Set A produces smooth transitions and coherent latents, while Set B exhibits artifacts and inconsistent denoising.
 
 <img src="doc/sd_vs_ddpoAB_strip.png" width="100%">
 
