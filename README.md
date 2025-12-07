@@ -4,7 +4,7 @@ This project implements **DDPO (Diffusion Decision Policy Optimization)** for Re
 It is part of the **F25 RL Final Project** supervised by Prof. Mathieu Laurière.  
 
 **Project Members:**  
-- Ruixuan Li (rl4789)  
+- Rachel Li (rl4789)  
 - Yanran Deng (yd2618)  
 - Zhuoran Chen (zc2745)  
 - Linxi Xie (lx2154)  
@@ -26,7 +26,9 @@ accelerate launch scripts/train.py --config config/dgx.py:compressibility
 ```
 
 ## Reward Curve
-<img src="doc/reward_mean_std_over_runs.png" width="70%">
+Reward / compression score across timesteps. The DDPO working configuration (Set~A) steadily improves over baseline SD, while Set~B shows unstable or slower progress. Shaded regions indicate one standard deviation across five seeds.
+
+<img src="doc/reward_curve_comparison.png" width="100%">
 
  Instructions:
 ```bash
@@ -41,7 +43,13 @@ accelerate launch scripts/train.py --config config/dgx.py:compressibility
 
 
 ## Learned Trajectories
-<img src="doc/training_strip.png" width="100%">
+Training progression for DDPO (Set~A, working).
+
+<img src="doc/training_strip_A.png" width="100%">
+
+Training progression for DDPO (Set~B, non-working).
+
+<img src="doc/training_strip_B.png" width="100%">
 
  Instructions:
 ```bash
@@ -53,7 +61,12 @@ accelerate launch scripts/train.py --config config/dgx.py:compressibility
 </details>
 
 ## Baseline Comparison
-doc/trajectory_demo.html
+Row 1: SD baseline. Row 2: SD+DDPO (Set~A, working). Row 3: SD+DDPO (Set~B, non-working). DDPO with Set~A produces smooth transitions and coherent latents, while Set~B exhibits artifacts and inconsistent denoising.
+
+<img src="doc/sd_vs_ddpoAB_strip.png" width="100%">
+
+
+Interactive comparison: `doc/trajectory_demo.html`
 
 <img src="doc/baseline_comparison.png" width="70%">
 
