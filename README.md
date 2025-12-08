@@ -32,17 +32,23 @@ Reward / compression score across timesteps. The DDPO working configuration (Set
 
  Instructions:
 ```bash
-    Export your WANDB table as wandb_export.csv and place it in:
+    # Export your WANDB table as wandb_export.csv and place it in:
     visualize_training/wandb_export.csv.
-    Then run:
+    # Then run:
     python visualize_training/plot_mean_std.py
     
 ```
 
 
-
-
 ## Learned Trajectories
+Row 1: SD baseline. Row 2: SD+DDPO (Set A, working). Row 3: SD+DDPO (Set B, non-working). DDPO with Set A produces smooth transitions and coherent latents, while Set B exhibits artifacts and inconsistent denoising. 
+We use the checkpoint saved at epoch 50 for
+both Set A and Set B and visualize the full 50-step denoising process at inference time. 
+
+<img src="doc/sd_vs_ddpoAB_strip.png" width="100%">
+
+
+## Checkpoint Progression
 Training progression for DDPO (Set A, working).
 
 <img src="doc/training_strip_A.png" width="100%">
@@ -59,32 +65,5 @@ Training progression for DDPO (Set B, non-working).
 ```
     
 </details>
-
-## Baseline Comparison
-Row 1: SD baseline. Row 2: SD+DDPO (Set A, working). Row 3: SD+DDPO (Set B, non-working). DDPO with Set A produces smooth transitions and coherent latents, while Set B exhibits artifacts and inconsistent denoising.
-
-<img src="doc/sd_vs_ddpoAB_strip.png" width="100%">
-
-
-Interactive comparison: `doc/trajectory_demo.html`
-
-<img src="doc/baseline_comparison.png" width="70%">
-
-Instructions:
-```bash
-    # Stable Diffusion trajectory 
-    python visualize_inference/visualize_traj.py --checkpoint None
-
-    # DDPO trajectory
-    python visualize_inference/visualize_traj.py --checkpoint logs/<run>/checkpoints/checkpoint_XX
-
-    # Then load the scores accordingly from trajectory_sd and trajectory_ddpo 
-    python visualize_inference/load_scores.py
-
-    # and paste the score list into doc/trajectory_demo.html
-
-    # Open the following html with VSCode Live Server Extension
-    doc/trajectory_demo.html
-```
 
 
